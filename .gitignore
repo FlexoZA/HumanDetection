@@ -1,0 +1,35 @@
+# PlatformIO
+.pio/
+.vscode/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+
+# Build outputs
+*.bin
+*.hex
+*.elf
+*.map
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Configuration files with sensitive data
+src/config_local.h
+secrets.h
+
+# Temporary files
+*.tmp
+*.temp 
