@@ -2,13 +2,22 @@
 #define CONFIG_H
 
 // WiFi Configuration
-#define WIFI_SSID "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID "Lab"
+#define WIFI_PASSWORD "jason789"
 #define WIFI_TIMEOUT_MS 10000
 
 // Hardware Pin Configuration
-#define PIR_SENSOR_PIN 2
-#define LED_PIN 2
+// RCWL-0516 Sensor
+#define PIR_SENSOR_PIN 23  // GPIO 23 for motion sensor output
+
+// CJMCU-2812B-16 NeoPixel Strip (16 LEDs)
+#define LED_DATA_PIN 25    // GPIO 25 for LED data line
+#define NUM_LEDS 16        // Number of LEDs in the strip
+
+// Button Pin
+#define BUTTON_PIN 18      // GPIO 18 with internal pull-up
+
+// Battery monitoring (if needed later)
 #define BATTERY_VOLTAGE_PIN A0
 
 // API Configuration
