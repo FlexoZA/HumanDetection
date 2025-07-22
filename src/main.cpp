@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <FastLED.h>
 #include "config.h"
+#include "wifi_manager.h"
+#include "api_client.h"
 
 // LED array
 CRGB leds[NUM_LEDS];
@@ -36,7 +38,7 @@ const unsigned long STAGE2_DURATION = 1000;    // 1 second orange loading
 const unsigned long STAGE3_DURATION = 1000;    // 1 second red loading before solid red
 const unsigned long MOVEMENT_TIMEOUT = 500;    // 500ms without movement = no movement
 const unsigned long LED_UPDATE_INTERVAL = 125; // Update LED every 125ms (16 LEDs in 2 seconds)
-const unsigned long AUTO_ARM_DELAY = 600000;   // 10 minutes (600000) to auto-arm after no movement
+const unsigned long AUTO_ARM_DELAY = 5000;   // 10 minutes (600000) to auto-arm after no movement
 const unsigned long RAINBOW_UPDATE_INTERVAL = 50; // Update rainbow every 50ms
 const unsigned long NOTIFICATION_REPEAT_INTERVAL = 5000; // Send notification every 5 seconds in solid red
 
@@ -77,6 +79,44 @@ void setup() {
     // Turn off all LEDs after chase
     fill_solid(leds, NUM_LEDS, CRGB::Black);
     FastLED.show();
+    
+    // Initialize WiFi connection with visual feedback
+    Serial.println("DEBUG::main.cpp Initializing WiFi connection...");
+    
+    // Show blue LEDs while connecting to WiFi
+    fill_solid(leds, NUM_LEDS, CRGB::Blue);
+    FastLED.show();
+    
+    if (WiFiManager::init()) {
+        Serial.println("DEBUG::main.cpp WiFi connected successfully!");
+        
+        // Show green flash for successful WiFi connection
+        for(int i = 0; i < 3; i++) {
+            fill_solid(leds, NUM_LEDS, CRGB::Green);
+            FastLED.show();
+            delay(200);
+            fill_solid(leds, NUM_LEDS, CRGB::Black);
+            FastLED.show();
+            delay(200);
+        }
+        
+        // Initialize API client
+        APIClient::init();
+        Serial.println("DEBUG::main.cpp API client initialized");
+        
+    } else {
+        Serial.println("DEBUG::main.cpp WiFi connection failed!");
+        
+        // Show red flash for failed WiFi connection
+        for(int i = 0; i < 5; i++) {
+            fill_solid(leds, NUM_LEDS, CRGB::Red);
+            FastLED.show();
+            delay(300);
+            fill_solid(leds, NUM_LEDS, CRGB::Black);
+            FastLED.show();
+            delay(300);
+        }
+    }
     
     bootTestComplete = true;
     modeChangeTime = millis(); // Initialize mode change time
@@ -141,11 +181,22 @@ void showModeIndicator() {
 }
 
 void sendNotification() {
-    // Placeholder for future notification system
     Serial.println("DEBUG::main.cpp *** SECURITY ALERT *** Armed system detected movement!");
-    Serial.println("DEBUG::main.cpp TODO: Send notification to n8n/Supabase/Telegram");
     
-    // Visual indication of notification sent
+    // Try to send webhook notification to N8N
+    if (WiFiManager::isConnected()) {
+        Serial.println("DEBUG::main.cpp Sending webhook notification to N8N...");
+        
+        if (APIClient::sendDetectionEvent()) {
+            Serial.println("DEBUG::main.cpp Webhook notification sent successfully!");
+        } else {
+            Serial.println("DEBUG::main.cpp Failed to send webhook notification");
+        }
+    } else {
+        Serial.println("DEBUG::main.cpp Cannot send notification - WiFi not connected");
+    }
+    
+    // Visual indication of notification attempt (purple flashes)
     for(int i = 0; i < 3; i++) {
         fill_solid(leds, NUM_LEDS, CRGB::Purple);
         FastLED.show();

@@ -21,7 +21,7 @@
 #define BATTERY_VOLTAGE_PIN A0
 
 // API Configuration
-#define N8N_ENDPOINT_URL "https://your-n8n-instance.com/webhook/human-detection"
+#define N8N_ENDPOINT_URL "https://automation.cwe.cloud/webhook/c80b7283-00e5-4e74-8c1a-5067eca53ad5"
 #define API_TIMEOUT_MS 5000
 
 // Power Management
