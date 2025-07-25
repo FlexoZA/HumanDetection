@@ -37,8 +37,8 @@ const unsigned long STAGE1_DURATION = 1000;    // 1 second white loading
 const unsigned long STAGE2_DURATION = 1000;    // 1 second orange loading
 const unsigned long STAGE3_DURATION = 1000;    // 1 second red loading before solid red
 const unsigned long MOVEMENT_TIMEOUT = 500;    // 500ms without movement = no movement
-const unsigned long LED_UPDATE_INTERVAL = 125; // Update LED every 125ms (16 LEDs in 2 seconds)
-const unsigned long AUTO_ARM_DELAY = 5000;   // 10 minutes (600000) to auto-arm after no movement
+const unsigned long LED_UPDATE_INTERVAL = 62; // Update LED every 125ms (16 LEDs in 2 seconds)
+const unsigned long AUTO_ARM_DELAY = 600000;   // 10 minutes (600000) to auto-arm after no movement
 const unsigned long RAINBOW_UPDATE_INTERVAL = 50; // Update rainbow every 50ms
 const unsigned long NOTIFICATION_REPEAT_INTERVAL = 5000; // Send notification every 5 seconds in solid red
 
@@ -252,6 +252,20 @@ void checkAutoArm() {
             currentMode = ARMED;
             modeChangeTime = currentTime;
             Serial.println("DEBUG::main.cpp AUTO-ARM: No movement for 10 minutes - System now ARMED");
+            
+            // Send auto-armed notification to N8N
+            if (WiFiManager::isConnected()) {
+                Serial.println("DEBUG::main.cpp Sending auto-armed notification to N8N...");
+                
+                if (APIClient::sendAutoArmedEvent()) {
+                    Serial.println("DEBUG::main.cpp Auto-armed notification sent successfully!");
+                } else {
+                    Serial.println("DEBUG::main.cpp Failed to send auto-armed notification");
+                }
+            } else {
+                Serial.println("DEBUG::main.cpp Cannot send auto-armed notification - WiFi not connected");
+            }
+            
             showModeIndicator();
         }
     }

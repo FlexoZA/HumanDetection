@@ -10,6 +10,7 @@ class APIClient {
 public:
     static void init();
     static bool sendDetectionEvent();
+    static bool sendAutoArmedEvent();
     static bool sendHeartbeat();
     static bool sendBatteryStatus(float voltage);
     static bool testConnection();
@@ -19,6 +20,7 @@ private:
     static bool initialized;
     
     static String createDetectionPayload();
+    static String createAutoArmedPayload();
     static String createHeartbeatPayload();
     static String createBatteryPayload(float voltage);
     static bool sendPostRequest(const String& payload);

@@ -28,6 +28,18 @@ bool APIClient::sendDetectionEvent() {
     return sendPostRequest(payload);
 }
 
+bool APIClient::sendAutoArmedEvent() {
+    if (!initialized || !WiFiManager::isConnected()) {
+        Serial.println("DEBUG::api_client.cpp Cannot send auto-armed event - not initialized or no WiFi");
+        return false;
+    }
+    
+    Serial.println("DEBUG::api_client.cpp Sending auto-armed event...");
+    
+    String payload = createAutoArmedPayload();
+    return sendPostRequest(payload);
+}
+
 bool APIClient::sendHeartbeat() {
     if (!initialized || !WiFiManager::isConnected()) {
         Serial.println("DEBUG::api_client.cpp Cannot send heartbeat - not initialized or no WiFi");
@@ -85,6 +97,23 @@ String APIClient::createDetectionPayload() {
     doc["battery_voltage"] = PowerManager::getBatteryVoltage();
     doc["wifi_signal"] = WiFiManager::getSignalStrength();
     doc["location"] = "sensor_location"; // TODO: Make configurable
+    
+    String payload;
+    serializeJson(doc, payload);
+    
+    return payload;
+}
+
+String APIClient::createAutoArmedPayload() {
+    DynamicJsonDocument doc(1024);
+    
+    doc["event_type"] = "auto_armed";
+    doc["device_id"] = getDeviceId();
+    doc["timestamp"] = getCurrentTimestamp();
+    doc["battery_voltage"] = PowerManager::getBatteryVoltage();
+    doc["wifi_signal"] = WiFiManager::getSignalStrength();
+    doc["location"] = "sensor_location"; // TODO: Make configurable
+    doc["trigger"] = "10_minute_inactivity";
     
     String payload;
     serializeJson(doc, payload);
