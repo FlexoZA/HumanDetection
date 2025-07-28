@@ -24,6 +24,12 @@
 #define N8N_ENDPOINT_URL "https://automation.cwe.cloud/webhook/c80b7283-00e5-4e74-8c1a-5067eca53ad5"
 #define API_TIMEOUT_MS 5000
 
+// HTTP Server Configuration
+#define HTTP_SERVER_PORT 80
+#define API_KEY "HumanDetection2024"
+#define MAX_COMMAND_LENGTH 512
+#define HTTP_REQUEST_TIMEOUT 5000
+
 // Power Management
 #define SLEEP_DURATION_SECONDS 30
 #define LOW_BATTERY_THRESHOLD 3.2  // Volts

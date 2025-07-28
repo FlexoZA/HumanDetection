@@ -14,6 +14,7 @@ public:
     static bool sendHeartbeat();
     static bool sendBatteryStatus(float voltage);
     static bool testConnection();
+    static String pollForCommands();
     
 private:
     static HTTPClient http;

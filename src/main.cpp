@@ -3,6 +3,8 @@
 #include "config.h"
 #include "wifi_manager.h"
 #include "api_client.h"
+#include "command_handler.h"
+#include "http_server.h"
 
 // LED array
 CRGB leds[NUM_LEDS];
@@ -103,6 +105,12 @@ void setup() {
         // Initialize API client
         APIClient::init();
         Serial.println("DEBUG::main.cpp API client initialized");
+        
+        // Initialize command handler
+        CommandHandler::init();
+        
+        // Initialize HTTP server
+        HTTPServer::init();
         
     } else {
         Serial.println("DEBUG::main.cpp WiFi connection failed!");
@@ -380,6 +388,9 @@ void loop() {
         currentState = IDLE; // Always stay in idle when disarmed
         updateRainbow();
     }
+    
+    // Handle HTTP server requests
+    HTTPServer::handleClient();
     
     // Small delay to prevent excessive CPU usage
     delay(20);
