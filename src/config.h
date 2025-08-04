@@ -6,6 +6,30 @@
 #define WIFI_PASSWORD "jason789"
 #define WIFI_TIMEOUT_MS 10000
 
+// MQTT Configuration
+#define MQTT_BROKER "185.202.223.35"
+#define MQTT_PORT 1883
+#define MQTT_USERNAME "flexo"
+#define MQTT_PASSWORD "Chr0846400936#"
+#define MQTT_CLIENT_ID_PREFIX "humandetection_device_"
+#define MQTT_KEEP_ALIVE 60
+#define MQTT_CONNECT_TIMEOUT 10000
+#define MQTT_RECONNECT_INTERVAL 5000
+#define MQTT_HEARTBEAT_INTERVAL 300000  // 5 minutes
+
+// MQTT Topics
+#define MQTT_TOPIC_BASE "humandetection/"
+#define MQTT_TOPIC_COMMAND "/command"
+#define MQTT_TOPIC_STATUS "/status"
+#define MQTT_TOPIC_DETECTION "/detection"
+#define MQTT_TOPIC_HEARTBEAT "/heartbeat"
+#define MQTT_TOPIC_ONLINE "/online"
+
+// MQTT QoS Levels
+#define MQTT_QOS_COMMANDS 1     // At least once delivery for commands
+#define MQTT_QOS_DETECTION 1    // At least once delivery for critical alerts
+#define MQTT_QOS_STATUS 0       // Fire and forget for status/heartbeat
+
 // Hardware Pin Configuration
 // RCWL-0516 Sensor
 #define PIR_SENSOR_PIN 23  // GPIO 23 for motion sensor output
@@ -20,13 +44,11 @@
 // Battery monitoring (if needed later)
 #define BATTERY_VOLTAGE_PIN A0
 
-// API Configuration
-#define N8N_ENDPOINT_URL "https://automation.cwe.cloud/webhook/c80b7283-00e5-4e74-8c1a-5067eca53ad5"
-#define API_TIMEOUT_MS 5000
-
-// HTTP Server Configuration
-#define HTTP_SERVER_PORT 80
+// API Configuration (Legacy - will be removed)
 #define API_KEY "HumanDetection2024"
+
+// HTTP Server Configuration (for local commands if needed)
+#define HTTP_SERVER_PORT 80
 #define MAX_COMMAND_LENGTH 512
 #define HTTP_REQUEST_TIMEOUT 5000
 

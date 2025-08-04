@@ -20,41 +20,62 @@ void CommandHandler::init() {
 }
 
 CommandResponse CommandHandler::processCommand(const String& jsonCommand) {
+    Serial.println("DEBUG::command_handler.cpp ========== PROCESSING COMMAND ==========");
+    Serial.println("DEBUG::command_handler.cpp Received JSON: " + jsonCommand);
+    
     DynamicJsonDocument doc(512);
     DeserializationError error = deserializeJson(doc, jsonCommand);
     
     if (error) {
         Serial.println("DEBUG::command_handler.cpp Invalid JSON received");
+        Serial.println("DEBUG::command_handler.cpp JSON Error: " + String(error.c_str()));
         return {false, "Invalid JSON format", "", 400};
     }
     
+    Serial.println("DEBUG::command_handler.cpp JSON parsed successfully");
+    
     // Validate API key
     String apiKey = doc["api_key"] | "";
+    Serial.println("DEBUG::command_handler.cpp API Key received: '" + apiKey + "'");
+    Serial.println("DEBUG::command_handler.cpp API Key length: " + String(apiKey.length()));
+    
     if (!validateApiKey(apiKey)) {
-        Serial.println("DEBUG::command_handler.cpp Invalid API key");
+        Serial.println("DEBUG::command_handler.cpp Invalid API key - validation failed");
         return {false, "Invalid API key", "", 401};
     }
+    
+    Serial.println("DEBUG::command_handler.cpp API key validated successfully");
     
     // Parse command
     String action = doc["action"] | "";
     String source = doc["source"] | "unknown";
     
+    Serial.println("DEBUG::command_handler.cpp Extracted action: '" + action + "'");
+    Serial.println("DEBUG::command_handler.cpp Extracted source: '" + source + "'");
+    
     CommandType cmdType = parseCommandType(action);
+    Serial.println("DEBUG::command_handler.cpp Parsed command type: " + String((int)cmdType));
     
     Serial.println("DEBUG::command_handler.cpp Processing command: " + action + " from " + source);
     
     switch (cmdType) {
         case CMD_ARM:
+            Serial.println("DEBUG::command_handler.cpp Executing ARM command");
             return handleArmCommand(source);
         case CMD_DISARM:
+            Serial.println("DEBUG::command_handler.cpp Executing DISARM command");
             return handleDisarmCommand(source);
         case CMD_STATUS:
+            Serial.println("DEBUG::command_handler.cpp Executing STATUS command");
             return handleStatusCommand();
         case CMD_TEST_LEDS:
+            Serial.println("DEBUG::command_handler.cpp Executing TEST_LEDS command");
             return handleTestLedsCommand();
         case CMD_REBOOT:
+            Serial.println("DEBUG::command_handler.cpp Executing REBOOT command");
             return handleRebootCommand();
         default:
+            Serial.println("DEBUG::command_handler.cpp Unknown command type - returning error");
             return {false, "Unknown command: " + action, "", 400};
     }
 }

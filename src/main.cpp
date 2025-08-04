@@ -2,9 +2,12 @@
 #include <FastLED.h>
 #include "config.h"
 #include "wifi_manager.h"
-#include "api_client.h"
+#include "mqtt_client.h"
+#include "mqtt_message_handler.h"
 #include "command_handler.h"
-#include "http_server.h"
+
+// Function declarations for external access
+void triggerCommandReceivedIndicator();
 
 // LED array
 CRGB leds[NUM_LEDS];
@@ -24,15 +27,26 @@ enum DetectionState {
     STAGE3_RED      // Sustained movement - red loading with 10 second reset
 };
 
+// MQTT connection states for visual feedback
+const int MQTT_STATE_DISCONNECTED = 0;
+const int MQTT_STATE_CONNECTING = 1;
+const int MQTT_STATE_CONNECTED = 2;
+const int MQTT_STATE_RECONNECTING = 3;
+
 SystemMode currentMode = DISARMED;  // Start disarmed
 DetectionState currentState = IDLE;
+int mqttState = MQTT_STATE_DISCONNECTED;
 unsigned long stateStartTime = 0;
 unsigned long lastMovementTime = 0;
 unsigned long lastLEDUpdate = 0;
 unsigned long modeChangeTime = 0;
 unsigned long lastRainbowUpdate = 0;
 unsigned long lastNotificationTime = 0;
+unsigned long lastMQTTStatusCheck = 0;
+unsigned long lastMQTTVisualUpdate = 0;
 uint8_t rainbowHue = 0;
+uint8_t mqttPulseHue = 0;
+bool lastMQTTConnectedState = false;
 
 // Timing constants (in milliseconds)
 const unsigned long STAGE1_DURATION = 1000;    // 1 second white loading
@@ -43,6 +57,8 @@ const unsigned long LED_UPDATE_INTERVAL = 62; // Update LED every 125ms (16 LEDs
 const unsigned long AUTO_ARM_DELAY = 600000;   // 10 minutes (600000) to auto-arm after no movement
 const unsigned long RAINBOW_UPDATE_INTERVAL = 50; // Update rainbow every 50ms
 const unsigned long NOTIFICATION_REPEAT_INTERVAL = 5000; // Send notification every 5 seconds in solid red
+const unsigned long MQTT_STATUS_CHECK_INTERVAL = 1000; // Check MQTT status every second
+const unsigned long MQTT_VISUAL_UPDATE_INTERVAL = 100; // Update MQTT visual feedback every 100ms
 
 void setup() {
     // Initialize serial communication
@@ -102,15 +118,25 @@ void setup() {
             delay(200);
         }
         
-        // Initialize API client
-        APIClient::init();
-        Serial.println("DEBUG::main.cpp API client initialized");
+        // Initialize MQTT client
+        MQTTClient::init();
+        Serial.println("DEBUG::main.cpp MQTT client initialized");
         
         // Initialize command handler
         CommandHandler::init();
         
-        // Initialize HTTP server
-        HTTPServer::init();
+        // Initialize MQTT message handler
+        MQTTMessageHandler::init();
+        
+        // Set up MQTT message callback
+        MQTTClient::setMessageCallback(MQTTMessageHandler::handleMessage);
+        
+        // Connect to MQTT broker
+        if (MQTTClient::connect()) {
+            Serial.println("DEBUG::main.cpp MQTT connected successfully!");
+        } else {
+            Serial.println("DEBUG::main.cpp MQTT connection failed!");
+        }
         
     } else {
         Serial.println("DEBUG::main.cpp WiFi connection failed!");
@@ -129,11 +155,26 @@ void setup() {
     bootTestComplete = true;
     modeChangeTime = millis(); // Initialize mode change time
     lastRainbowUpdate = millis();
+    lastMQTTStatusCheck = millis();
+    lastMQTTVisualUpdate = millis();
+    lastMQTTConnectedState = MQTTClient::isConnected();
+    
+    // Initialize MQTT state based on current connection
+    if (WiFiManager::isConnected()) {
+        if (MQTTClient::isConnected()) {
+            mqttState = MQTT_STATE_CONNECTED;
+        } else {
+            mqttState = MQTT_STATE_CONNECTING;
+        }
+    } else {
+        mqttState = MQTT_STATE_DISCONNECTED;
+    }
     
     Serial.println("DEBUG::main.cpp Boot test complete - System ready");
     Serial.println("DEBUG::main.cpp System Mode: DISARMED (continuous rainbow)");
     Serial.println("DEBUG::main.cpp Auto-arm delay: 10 minutes after no movement");
     Serial.println("DEBUG::main.cpp Detection stages: WHITE loading -> ORANGE loading -> RED loading");
+    Serial.println("DEBUG::main.cpp MQTT visual feedback enabled");
 }
 
 void clearAllLEDs() {
@@ -188,20 +229,122 @@ void showModeIndicator() {
     }
 }
 
+void showMQTTConnectionPulse() {
+    // Blue pulsing effect while connecting to MQTT
+    unsigned long currentTime = millis();
+    
+    if (currentTime - lastMQTTVisualUpdate >= MQTT_VISUAL_UPDATE_INTERVAL) {
+        // Create pulsing blue effect
+        uint8_t brightness = (sin(mqttPulseHue * 0.02) + 1) * 127; // Sine wave between 0-255
+        CRGB pulseColor = CRGB(0, 0, brightness);
+        
+        fill_solid(leds, NUM_LEDS, pulseColor);
+        FastLED.show();
+        
+        mqttPulseHue += 8; // Speed of pulse
+        lastMQTTVisualUpdate = currentTime;
+    }
+}
+
+void showMQTTDisconnectionWarning() {
+    // Orange and red alternating blink for MQTT disconnection
+    static bool orangePhase = true;
+    static unsigned long lastBlink = 0;
+    unsigned long currentTime = millis();
+    
+    if (currentTime - lastBlink >= 500) { // Blink every 500ms
+        if (orangePhase) {
+            fill_solid(leds, NUM_LEDS, CRGB::Orange);
+        } else {
+            fill_solid(leds, NUM_LEDS, CRGB::Red);
+        }
+        FastLED.show();
+        
+        orangePhase = !orangePhase;
+        lastBlink = currentTime;
+    }
+}
+
+void showCommandReceivedIndicator() {
+    // Quick white flash to indicate command received
+    Serial.println("DEBUG::main.cpp MQTT command received - showing white flash");
+    
+    // Save current LED state (if needed for restoration)
+    // For now, just show the flash and let normal operation resume
+    
+    // Quick white flash
+    fill_solid(leds, NUM_LEDS, CRGB::White);
+    FastLED.show();
+    delay(100);
+    
+    // Brief pause
+    clearAllLEDs();
+    delay(50);
+    
+    // Another quick flash
+    fill_solid(leds, NUM_LEDS, CRGB::White);
+    FastLED.show();
+    delay(100);
+    
+    // Clear and return to normal operation
+    clearAllLEDs();
+}
+
+void updateMQTTConnectionState() {
+    unsigned long currentTime = millis();
+    
+    // Check MQTT status periodically
+    if (currentTime - lastMQTTStatusCheck >= MQTT_STATUS_CHECK_INTERVAL) {
+        bool currentlyConnected = MQTTClient::isConnected();
+        
+        // Detect state changes
+        if (currentlyConnected != lastMQTTConnectedState) {
+            if (currentlyConnected) {
+                // Just connected
+                mqttState = MQTT_STATE_CONNECTED;
+                Serial.println("DEBUG::main.cpp MQTT connection established - visual feedback updated");
+            } else {
+                // Just disconnected
+                if (lastMQTTConnectedState) {
+                    // Was connected, now disconnected
+                    mqttState = MQTT_STATE_RECONNECTING;
+                    Serial.println("DEBUG::main.cpp MQTT connection lost - showing disconnection warning");
+                } else {
+                    // Still disconnected, check if we're trying to connect
+                    if (WiFiManager::isConnected()) {
+                        mqttState = MQTT_STATE_CONNECTING;
+                    } else {
+                        mqttState = MQTT_STATE_DISCONNECTED;
+                    }
+                }
+            }
+            
+            lastMQTTConnectedState = currentlyConnected;
+        }
+        
+        lastMQTTStatusCheck = currentTime;
+    }
+}
+
+// Global function that can be called from other modules
+void triggerCommandReceivedIndicator() {
+    showCommandReceivedIndicator();
+}
+
 void sendNotification() {
     Serial.println("DEBUG::main.cpp *** SECURITY ALERT *** Armed system detected movement!");
     
-    // Try to send webhook notification to N8N
-    if (WiFiManager::isConnected()) {
-        Serial.println("DEBUG::main.cpp Sending webhook notification to N8N...");
+    // Try to send MQTT notification
+    if (WiFiManager::isConnected() && MQTTClient::isConnected()) {
+        Serial.println("DEBUG::main.cpp Sending MQTT detection event...");
         
-        if (APIClient::sendDetectionEvent()) {
-            Serial.println("DEBUG::main.cpp Webhook notification sent successfully!");
+        if (MQTTClient::publishDetectionEvent("human_detection")) {
+            Serial.println("DEBUG::main.cpp MQTT detection event sent successfully!");
         } else {
-            Serial.println("DEBUG::main.cpp Failed to send webhook notification");
+            Serial.println("DEBUG::main.cpp Failed to send MQTT detection event");
         }
     } else {
-        Serial.println("DEBUG::main.cpp Cannot send notification - WiFi not connected");
+        Serial.println("DEBUG::main.cpp Cannot send notification - WiFi or MQTT not connected");
     }
     
     // Visual indication of notification attempt (purple flashes)
@@ -261,17 +404,17 @@ void checkAutoArm() {
             modeChangeTime = currentTime;
             Serial.println("DEBUG::main.cpp AUTO-ARM: No movement for 10 minutes - System now ARMED");
             
-            // Send auto-armed notification to N8N
-            if (WiFiManager::isConnected()) {
-                Serial.println("DEBUG::main.cpp Sending auto-armed notification to N8N...");
+            // Send auto-armed notification via MQTT
+            if (WiFiManager::isConnected() && MQTTClient::isConnected()) {
+                Serial.println("DEBUG::main.cpp Sending auto-armed event via MQTT...");
                 
-                if (APIClient::sendAutoArmedEvent()) {
-                    Serial.println("DEBUG::main.cpp Auto-armed notification sent successfully!");
+                if (MQTTClient::publishDetectionEvent("auto_armed")) {
+                    Serial.println("DEBUG::main.cpp Auto-armed event sent successfully!");
                 } else {
-                    Serial.println("DEBUG::main.cpp Failed to send auto-armed notification");
+                    Serial.println("DEBUG::main.cpp Failed to send auto-armed event");
                 }
             } else {
-                Serial.println("DEBUG::main.cpp Cannot send auto-armed notification - WiFi not connected");
+                Serial.println("DEBUG::main.cpp Cannot send auto-armed event - WiFi or MQTT not connected");
             }
             
             showModeIndicator();
@@ -298,6 +441,32 @@ void loop() {
     
     // Check for auto-arm condition
     checkAutoArm();
+    
+    // Update MQTT connection state and visual feedback
+    updateMQTTConnectionState();
+    
+    // Handle MQTT visual feedback - only when not in active detection sequence
+    bool inActiveDetection = (currentMode == ARMED && currentState != IDLE);
+    
+    if (!inActiveDetection) {
+        switch (mqttState) {
+            case MQTT_STATE_CONNECTING:
+                showMQTTConnectionPulse();
+                break;
+            case MQTT_STATE_RECONNECTING:
+                showMQTTDisconnectionWarning();
+                break;
+            case MQTT_STATE_CONNECTED:
+                // Normal operation - will show rainbow in disarmed mode or stay dark in armed mode
+                break;
+            case MQTT_STATE_DISCONNECTED:
+                // Show disconnection warning if WiFi is connected but MQTT isn't
+                if (WiFiManager::isConnected()) {
+                    showMQTTDisconnectionWarning();
+                }
+                break;
+        }
+    }
     
     // Only process detection states if system is ARMED
     if (currentMode == ARMED) {
@@ -384,13 +553,17 @@ void loop() {
                 break;
         }
     } else {
-        // DISARMED mode - just show rainbow, ignore movement for detection
+        // DISARMED mode - show rainbow only if MQTT is connected, otherwise show MQTT status
         currentState = IDLE; // Always stay in idle when disarmed
-        updateRainbow();
+        
+        if (mqttState == MQTT_STATE_CONNECTED) {
+            updateRainbow();
+        }
+        // MQTT visual feedback is handled above in the main switch statement
     }
     
-    // Handle HTTP server requests
-    HTTPServer::handleClient();
+    // Handle MQTT client loop (includes message handling and reconnection)
+    MQTTClient::loop();
     
     // Small delay to prevent excessive CPU usage
     delay(20);
