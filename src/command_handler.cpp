@@ -14,6 +14,7 @@ extern SystemMode currentMode;
 extern CRGB leds[];
 extern void clearAllLEDs();
 extern void showModeIndicator();
+extern unsigned long lastMovementTime;
 
 void CommandHandler::init() {
     Serial.println("DEBUG::command_handler.cpp Command handler initialized");
@@ -115,6 +116,9 @@ CommandResponse CommandHandler::handleDisarmCommand(const String& source) {
     }
     
     currentMode = DISARMED;
+    // Reset auto-arm timer so we don't immediately re-arm after manual disarm
+    lastMovementTime = millis();
+    Serial.println("DEBUG::command_handler.cpp Resetting auto-arm timer on disarm");
     Serial.println("DEBUG::command_handler.cpp System MANUALLY DISARMED from " + source);
     
     // Show cyan flashes for manual disarm (different from normal green flashes)
