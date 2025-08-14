@@ -14,7 +14,7 @@ public:
 private:
     static bool isCommandTopic(const String& topic);
     static void processCommandMessage(const String& message);
-    static void sendCommandResponse(const String& command, bool success, const String& message);
+    static void sendCommandResponse(const String& command, bool success, const String& message, const String& data);
 };
 
 #endif // MQTT_MESSAGE_HANDLER_H 

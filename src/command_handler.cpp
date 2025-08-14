@@ -175,8 +175,11 @@ CommandResponse CommandHandler::handleRebootCommand() {
 String CommandHandler::createStatusResponse() {
     DynamicJsonDocument doc(512);
     
-    doc["device_id"] = WiFi.macAddress();
-    doc["timestamp"] = millis();
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+    mac.toLowerCase();
+    doc["device_id"] = mac;
+    // Timestamp is handled in MQTT payloads; omit numeric timestamp here
     doc["current_mode"] = (currentMode == ARMED) ? "ARMED" : "DISARMED";
     doc["wifi_connected"] = WiFi.status() == WL_CONNECTED;
     doc["wifi_signal"] = WiFi.RSSI();

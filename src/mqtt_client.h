@@ -23,7 +23,7 @@ public:
     static bool publishStatus();
     static bool publishHeartbeat();
     static bool publishOnlineStatus(bool online);
-    static bool publishCommandResponse(const String& command, bool success, const String& message);
+    static bool publishCommandResponse(const String& command, bool success, const String& message, const String& data = "");
     
     // Subscription methods
     static void setMessageCallback(MqttMessageCallback callback);

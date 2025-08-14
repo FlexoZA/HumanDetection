@@ -17,6 +17,11 @@
 #define MQTT_RECONNECT_INTERVAL 5000
 #define MQTT_HEARTBEAT_INTERVAL 300000  // 5 minutes
 
+// NTP Configuration
+#define NTP_SERVER_1 "pool.ntp.org"
+#define NTP_SERVER_2 "time.nist.gov"
+#define NTP_SERVER_3 "time.google.com"
+
 // MQTT Topics
 #define MQTT_TOPIC_BASE "humandetection/"
 #define MQTT_TOPIC_COMMAND "/command"
@@ -32,10 +37,10 @@
 
 // Hardware Pin Configuration
 // RCWL-0516 Sensor
-#define PIR_SENSOR_PIN 23  // GPIO 23 for motion sensor output
+#define PIR_SENSOR_PIN 25  // GPIO 25 for motion sensor output
 
 // CJMCU-2812B-16 NeoPixel Strip (16 LEDs)
-#define LED_DATA_PIN 25    // GPIO 25 for LED data line
+#define LED_DATA_PIN 23    // GPIO 23 for LED data line
 #define NUM_LEDS 16        // Number of LEDs in the strip
 
 // Button Pin

@@ -36,7 +36,7 @@ void MQTTMessageHandler::processCommandMessage(const String& message) {
     if (error) {
         Serial.println("DEBUG::mqtt_message_handler.cpp Failed to parse JSON command");
         Serial.println("DEBUG::mqtt_message_handler.cpp JSON Error: " + String(error.c_str()));
-        sendCommandResponse("unknown", false, "Invalid JSON format");
+        sendCommandResponse("unknown", false, "Invalid JSON format", "");
         return;
     }
     
@@ -53,7 +53,7 @@ void MQTTMessageHandler::processCommandMessage(const String& message) {
     
     if (action.isEmpty()) {
         Serial.println("DEBUG::mqtt_message_handler.cpp No action specified in command");
-        sendCommandResponse("unknown", false, "No action specified");
+        sendCommandResponse("unknown", false, "No action specified", "");
         return;
     }
     
@@ -65,8 +65,8 @@ void MQTTMessageHandler::processCommandMessage(const String& message) {
     Serial.println("DEBUG::mqtt_message_handler.cpp CommandHandler response - Success: " + String(response.success ? "true" : "false"));
     Serial.println("DEBUG::mqtt_message_handler.cpp CommandHandler response - Message: " + response.message);
     
-    // Send response back via MQTT
-    sendCommandResponse(action, response.success, response.message);
+    // Send response back via MQTT (include structured data so fields like current_mode are present)
+    sendCommandResponse(action, response.success, response.message, response.data);
     
     // Log the result
     if (response.success) {
@@ -76,7 +76,7 @@ void MQTTMessageHandler::processCommandMessage(const String& message) {
     }
 }
 
-void MQTTMessageHandler::sendCommandResponse(const String& command, bool success, const String& message) {
+void MQTTMessageHandler::sendCommandResponse(const String& command, bool success, const String& message, const String& data) {
     // Use the MQTT client to send the response
-    MQTTClient::publishCommandResponse(command, success, message);
+    MQTTClient::publishCommandResponse(command, success, message, data);
 } 

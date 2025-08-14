@@ -1,4 +1,5 @@
 #include "mqtt_client.h"
+#include <time.h>
 
 // Static member definitions
 WiFiClient MQTTClient::wifiClient;
@@ -62,20 +63,20 @@ bool MQTTClient::connect() {
     Serial.println("DEBUG::mqtt_client.cpp Client ID: " + clientId);
     Serial.println("DEBUG::mqtt_client.cpp Username: " + String(MQTT_USERNAME));
     
-    // Create last will and testament message
+    // Configure Last Will and Testament so broker publishes 'offline' on unexpected disconnects
     String lwt_topic = getTopicForDevice(MQTT_TOPIC_ONLINE);
-    String lwt_message = "offline";
-    
-    // Try simple connection first, then add LWT if it works
     bool connected = mqttClient.connect(
         clientId.c_str(),
         MQTT_USERNAME,
-        MQTT_PASSWORD
+        MQTT_PASSWORD,
+        lwt_topic.c_str(),
+        0,          // will QoS
+        true,       // will retained
+        "offline"   // will payload
     );
     
-    // If simple connection works, we can add LWT later
     if (connected) {
-        Serial.println("DEBUG::mqtt_client.cpp Basic MQTT connection successful");
+        Serial.println("DEBUG::mqtt_client.cpp MQTT connection (with LWT) successful");
     }
     
     if (connected) {
@@ -174,18 +175,41 @@ bool MQTTClient::publishOnlineStatus(bool online) {
     return success;
 }
 
-bool MQTTClient::publishCommandResponse(const String& command, bool success, const String& message) {
+bool MQTTClient::publishCommandResponse(const String& command, bool success, const String& message, const String& data) {
     if (!isConnected()) return false;
     
     String topic = getTopicForDevice(MQTT_TOPIC_STATUS);
     
     // Create response payload
-    DynamicJsonDocument doc(512);
+    DynamicJsonDocument doc(1024);
     doc["device_id"] = getDeviceId();
     doc["command_response"] = command;
     doc["success"] = success;
     doc["message"] = message;
-    doc["timestamp"] = getCurrentTimestamp();
+    // Timestamp: ISO8601 when available; empty if not yet synced
+    {
+        time_t now = time(nullptr);
+        if (now > 1600000000) {
+            doc["timestamp_iso"] = getCurrentTimestamp();
+        } else {
+            doc["timestamp_iso"] = "";
+        }
+    }
+    
+    // Merge additional data JSON into top-level if provided
+    if (data.length() > 0) {
+        DynamicJsonDocument dataDoc(1024);
+        DeserializationError err = deserializeJson(dataDoc, data);
+        if (!err) {
+            JsonObject dataObj = dataDoc.as<JsonObject>();
+            for (JsonPair kv : dataObj) {
+                doc[kv.key()] = kv.value();
+            }
+        } else {
+            // If not valid JSON, include raw data string for debugging
+            doc["data"] = data;
+        }
+    }
     
     String payload;
     serializeJson(doc, payload);
@@ -292,7 +316,14 @@ String MQTTClient::createDetectionPayload(const String& eventType) {
     
     doc["event_type"] = eventType;
     doc["device_id"] = getDeviceId();
-    doc["timestamp"] = getCurrentTimestamp();
+    {
+        time_t now = time(nullptr);
+        if (now > 1600000000) {
+            doc["timestamp_iso"] = getCurrentTimestamp();
+        } else {
+            doc["timestamp_iso"] = "";
+        }
+    }
     doc["battery_voltage"] = getBatteryVoltage();
     doc["wifi_signal"] = getWiFiSignalStrength();
     doc["location"] = "sensor_location";
@@ -313,7 +344,14 @@ String MQTTClient::createStatusPayload() {
     doc["free_heap"] = ESP.getFreeHeap();
     doc["wifi_signal"] = getWiFiSignalStrength();
     doc["battery_voltage"] = getBatteryVoltage();
-    doc["timestamp"] = getCurrentTimestamp();
+    {
+        time_t now = time(nullptr);
+        if (now > 1600000000) {
+            doc["timestamp_iso"] = getCurrentTimestamp();
+        } else {
+            doc["timestamp_iso"] = "";
+        }
+    }
     
     String payload;
     serializeJson(doc, payload);
@@ -325,7 +363,14 @@ String MQTTClient::createHeartbeatPayload() {
     DynamicJsonDocument doc(256);
     
     doc["device_id"] = getDeviceId();
-    doc["timestamp"] = getCurrentTimestamp();
+    {
+        time_t now = time(nullptr);
+        if (now > 1600000000) {
+            doc["timestamp_iso"] = getCurrentTimestamp();
+        } else {
+            doc["timestamp_iso"] = "";
+        }
+    }
     doc["uptime_ms"] = millis();
     doc["free_heap"] = ESP.getFreeHeap();
     doc["wifi_signal"] = getWiFiSignalStrength();
@@ -344,7 +389,17 @@ String MQTTClient::getDeviceId() {
 }
 
 String MQTTClient::getCurrentTimestamp() {
-    return String(millis() / 1000); // Simple timestamp - could be improved with NTP
+    // If SNTP time is available, return ISO 8601 UTC; otherwise fall back to seconds since boot
+    time_t now = time(nullptr);
+    if (now > 1600000000) {
+        struct tm timeinfo;
+        gmtime_r(&now, &timeinfo);
+        char buf[25];
+        // Format: YYYY-MM-DDTHH:MM:SSZ
+        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+        return String(buf);
+    }
+    return String(millis() / 1000);
 }
 
 String MQTTClient::getTopicForDevice(const String& topicSuffix) {

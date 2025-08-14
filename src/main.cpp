@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <time.h>
 #include <FastLED.h>
 #include "config.h"
 #include "wifi_manager.h"
@@ -107,6 +108,26 @@ void setup() {
     
     if (WiFiManager::init()) {
         Serial.println("DEBUG::main.cpp WiFi connected successfully!");
+        
+        // Configure SNTP time
+        configTime(0, 0, NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3);
+        Serial.println("DEBUG::main.cpp NTP: starting time sync...");
+        
+        // Wait up to ~10s for time to sync
+        const time_t TIME_SYNC_THRESHOLD = 1600000000; // ~2020-09-13
+        int attempts = 0;
+        while (attempts < 100) {
+            time_t now = time(nullptr);
+            if (now > TIME_SYNC_THRESHOLD) {
+                Serial.println("DEBUG::main.cpp NTP: time synchronized successfully");
+                break;
+            }
+            delay(100);
+            attempts++;
+        }
+        if (attempts >= 100) {
+            Serial.println("DEBUG::main.cpp NTP: time sync timed out, proceeding without RTC time");
+        }
         
         // Show green flash for successful WiFi connection
         for(int i = 0; i < 3; i++) {
