@@ -180,6 +180,11 @@ void setup() {
     lastMQTTVisualUpdate = millis();
     lastMQTTConnectedState = MQTTClient::isConnected();
     
+    // Initialize lastMovementTime to current time to prevent immediate auto-arm
+    lastMovementTime = millis();
+    // TODO: Remove debug logging when auto-arm is working correctly - saves memory and serial bandwidth on ESP32
+    Serial.println("DEBUG::main.cpp Auto-arm timer initialized - will auto-arm after 15 minutes of no movement");
+    
     // Initialize MQTT state based on current connection
     if (WiFiManager::isConnected()) {
         if (MQTTClient::isConnected()) {
@@ -193,7 +198,7 @@ void setup() {
     
     Serial.println("DEBUG::main.cpp Boot test complete - System ready");
     Serial.println("DEBUG::main.cpp System Mode: DISARMED (continuous rainbow)");
-    Serial.println("DEBUG::main.cpp Auto-arm delay: 10 minutes after no movement");
+    Serial.println("DEBUG::main.cpp Auto-arm delay: 15 minutes after no movement");
     Serial.println("DEBUG::main.cpp Detection stages: WHITE loading -> ORANGE loading -> RED loading");
     Serial.println("DEBUG::main.cpp MQTT visual feedback enabled");
 }
@@ -419,11 +424,21 @@ void checkAutoArm() {
     
     // Only check for auto-arm if currently disarmed
     if (currentMode == DISARMED) {
+        // TODO: Remove debug logging when auto-arm is working correctly - saves memory and serial bandwidth on ESP32
+        // Debug: Log timing information every 30 seconds
+        static unsigned long lastDebugTime = 0;
+        if (currentTime - lastDebugTime >= 30000) { // Every 30 seconds
+            unsigned long timeSinceLastMovement = currentTime - lastMovementTime;
+            unsigned long remainingTime = AUTO_ARM_DELAY - timeSinceLastMovement;
+            Serial.println("DEBUG::main.cpp Auto-arm check - Time since last movement: " + String(timeSinceLastMovement/1000) + "s, Remaining: " + String(remainingTime/1000) + "s");
+            lastDebugTime = currentTime;
+        }
+        
         // Check if enough time has passed since last movement
         if (currentTime - lastMovementTime > AUTO_ARM_DELAY) {
             currentMode = ARMED;
             modeChangeTime = currentTime;
-            Serial.println("DEBUG::main.cpp AUTO-ARM: No movement for 10 minutes - System now ARMED");
+            Serial.println("DEBUG::main.cpp AUTO-ARM: No movement for 15 minutes - System now ARMED");
             
             // Send auto-armed notification via MQTT
             if (WiFiManager::isConnected() && MQTTClient::isConnected()) {
@@ -451,11 +466,16 @@ void loop() {
     unsigned long currentTime = millis();
     bool movementNow = isMovementDetected();
     
-    // Update last movement time if movement is detected (for auto-arm timing only)
-    if (movementNow) {
+    // Update last movement time only when movement state changes from false to true (for auto-arm timing only)
+    static bool lastMovementState = false;
+    if (movementNow && !lastMovementState) {
+        // Movement just started (transition from no movement to movement)
         lastMovementTime = currentTime;
+        // TODO: Remove debug logging when auto-arm is working correctly - saves memory and serial bandwidth on ESP32
+        Serial.println("DEBUG::main.cpp Movement detected - Auto-arm timer reset to 15 minutes");
         // NOTE: No auto-disarm - armed mode stays armed until manual disarm
     }
+    lastMovementState = movementNow;
     
     // Check if movement has stopped (no movement for MOVEMENT_TIMEOUT)
     bool movementActive = (currentTime - lastMovementTime) < MOVEMENT_TIMEOUT;
