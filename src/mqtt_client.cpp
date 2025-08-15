@@ -65,6 +65,15 @@ bool MQTTClient::connect() {
     
     // Configure Last Will and Testament so broker publishes 'offline' on unexpected disconnects
     String lwt_topic = getTopicForDevice(MQTT_TOPIC_ONLINE);
+    // Set LWT payload with device_id so consumers can parse the ID from the message body
+    String lwt_payload;
+    {
+        DynamicJsonDocument willDoc(256);
+        willDoc["device_id"] = getDeviceId();
+        willDoc["message"] = "offline";
+        serializeJson(willDoc, lwt_payload);
+    }
+
     bool connected = mqttClient.connect(
         clientId.c_str(),
         MQTT_USERNAME,
@@ -72,7 +81,7 @@ bool MQTTClient::connect() {
         lwt_topic.c_str(),
         0,          // will QoS
         true,       // will retained
-        "offline"   // will payload
+        lwt_payload.c_str()   // will payload as JSON
     );
     
     if (connected) {
@@ -164,12 +173,18 @@ bool MQTTClient::publishOnlineStatus(bool online) {
     if (!mqttClient.connected() && online) return false;
     
     String topic = getTopicForDevice(MQTT_TOPIC_ONLINE);
-    String message = online ? "online" : "offline";
     
-    bool success = mqttClient.publish(topic.c_str(), message.c_str(), true); // retained
+    // Publish a JSON payload with both message and device_id, retained
+    DynamicJsonDocument doc(256);
+    doc["device_id"] = getDeviceId();
+    doc["message"] = online ? "online" : "offline";
+    String payload;
+    serializeJson(doc, payload);
+    
+    bool success = mqttClient.publish(topic.c_str(), payload.c_str(), true); // retained
     
     if (success) {
-        Serial.println("DEBUG::mqtt_client.cpp Online status published: " + message);
+        Serial.println("DEBUG::mqtt_client.cpp Online status published: " + String(online ? "online" : "offline"));
     }
     
     return success;

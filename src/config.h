@@ -2,8 +2,8 @@
 #define CONFIG_H
 
 // WiFi Configuration
-#define WIFI_SSID "Lab"
-#define WIFI_PASSWORD "jason789"
+#define WIFI_SSID "flexoZA"
+#define WIFI_PASSWORD "Chr0846400936#"
 #define WIFI_TIMEOUT_MS 10000
 
 // MQTT Configuration
