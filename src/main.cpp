@@ -53,7 +53,7 @@ bool lastMQTTConnectedState = false;
 const unsigned long STAGE1_DURATION = 1000;    // 1 second white loading
 const unsigned long STAGE2_DURATION = 1000;    // 1 second orange loading
 const unsigned long STAGE3_DURATION = 1000;    // 1 second red loading before solid red
-const unsigned long MOVEMENT_TIMEOUT = 500;    // 500ms without movement = no movement
+const unsigned long MOVEMENT_TIMEOUT = 2000;    // 2000ms (2 seconds) without movement = no movement
 const unsigned long LED_UPDATE_INTERVAL = 62; // Update LED every 125ms (16 LEDs in 2 seconds)
 const unsigned long AUTO_ARM_DELAY = 900000;   // 15 minutes (900000) to auto-arm after no movement
 const unsigned long RAINBOW_UPDATE_INTERVAL = 50; // Update rainbow every 50ms
@@ -416,7 +416,45 @@ void updateLoadingEffect(CRGB color, unsigned long stageDuration) {
 }
 
 bool isMovementDetected() {
-    return digitalRead(PIR_SENSOR_PIN) == HIGH;
+    static unsigned long lastChangeTime = 0;
+    static bool lastState = false;
+    static bool debouncedState = false;
+    static const int WINDOW_SIZE = 5;  // Number of samples to average
+    static bool readings[WINDOW_SIZE] = {false};  // Circular buffer of readings
+    static int readIndex = 0;  // Current position in circular buffer
+    static int trueCount = 0;  // Count of TRUE readings in buffer
+    
+    const unsigned long DEBOUNCE_DELAY = 250; // 250ms debounce time
+    const float MOVEMENT_THRESHOLD = 0.6; // 60% of readings must be TRUE to trigger
+    
+    bool currentReading = digitalRead(PIR_SENSOR_PIN) == HIGH;
+    unsigned long currentTime = millis();
+    
+    // Update moving average
+    if (readings[readIndex]) {
+        trueCount--; // Remove old TRUE reading
+    }
+    readings[readIndex] = currentReading;
+    if (currentReading) {
+        trueCount++; // Add new TRUE reading
+    }
+    readIndex = (readIndex + 1) % WINDOW_SIZE;
+    
+    // Calculate current filtered state
+    bool filteredReading = ((float)trueCount / WINDOW_SIZE) >= MOVEMENT_THRESHOLD;
+    
+    // Apply debouncing to filtered reading
+    if (filteredReading != lastState) {
+        lastChangeTime = currentTime;
+        lastState = filteredReading;
+    }
+    
+    // If enough time has passed since the last change
+    if ((currentTime - lastChangeTime) >= DEBOUNCE_DELAY) {
+        debouncedState = filteredReading;
+    }
+    
+    return debouncedState;
 }
 
 void checkAutoArm() {
@@ -466,19 +504,24 @@ void loop() {
     unsigned long currentTime = millis();
     bool movementNow = isMovementDetected();
     
-    // Update last movement time only when movement state changes from false to true (for auto-arm timing only)
+    // Track both movement starts and continuous movement
     static bool lastMovementState = false;
-    if (movementNow && !lastMovementState) {
-        // Movement just started (transition from no movement to movement)
-        lastMovementTime = currentTime;
-        // TODO: Remove debug logging when auto-arm is working correctly - saves memory and serial bandwidth on ESP32
-        Serial.println("DEBUG::main.cpp Movement detected - Auto-arm timer reset to 15 minutes");
-        // NOTE: No auto-disarm - armed mode stays armed until manual disarm
+    static unsigned long lastActiveMovement = 0;  // Tracks the last time we saw any movement
+    
+    if (movementNow) {
+        // Update for any movement (start or continuous)
+        lastActiveMovement = currentTime;
+        
+        // Log only movement starts (for auto-arm timing)
+        if (!lastMovementState) {
+            lastMovementTime = currentTime;
+            Serial.println("DEBUG::main.cpp Movement detected - Auto-arm timer reset to 15 minutes");
+        }
     }
     lastMovementState = movementNow;
     
-    // Check if movement has stopped (no movement for MOVEMENT_TIMEOUT)
-    bool movementActive = (currentTime - lastMovementTime) < MOVEMENT_TIMEOUT;
+    // Movement is active if we've seen any movement within MOVEMENT_TIMEOUT
+    bool movementActive = (currentTime - lastActiveMovement) < MOVEMENT_TIMEOUT;
     
     // Check for auto-arm condition
     checkAutoArm();
@@ -530,34 +573,40 @@ void loop() {
             case STAGE1_WHITE:
                 updateLoadingEffect(CRGB::White, STAGE1_DURATION);
                 
-                if (!movementActive) {
-                    // Movement stopped - return to idle
+                // Check state duration and movement status
+                if (currentTime - stateStartTime >= STAGE1_DURATION) {
+                    if (movementActive) {
+                        // Movement is still active after duration - progress to STAGE2
+                        currentState = STAGE2_ORANGE;
+                        stateStartTime = currentTime;
+                        clearAllLEDs();
+                        Serial.println("DEBUG::main.cpp STAGE 2: Continued movement - ORANGE loading");
+                    }
+                } else if (!movementActive) {
+                    // Movement stopped before completing stage - return to idle
                     currentState = IDLE;
                     clearAllLEDs();
                     Serial.println("DEBUG::main.cpp Movement stopped in WHITE stage - returning to IDLE (no notification sent)");
-                } else if (currentTime - stateStartTime >= STAGE1_DURATION) {
-                    // 1 second passed with continued movement - enter STAGE2
-                    currentState = STAGE2_ORANGE;
-                    stateStartTime = currentTime;
-                    clearAllLEDs();
-                    Serial.println("DEBUG::main.cpp STAGE 2: Continued movement - ORANGE loading");
                 }
                 break;
                 
             case STAGE2_ORANGE:
                 updateLoadingEffect(CRGB::Orange, STAGE2_DURATION);
                 
-                if (!movementActive) {
-                    // Movement stopped - return to idle
+                // Check state duration and movement status
+                if (currentTime - stateStartTime >= STAGE2_DURATION) {
+                    if (movementActive) {
+                        // Movement is still active after duration - progress to STAGE3
+                        currentState = STAGE3_RED;
+                        stateStartTime = currentTime;
+                        clearAllLEDs();
+                        Serial.println("DEBUG::main.cpp STAGE 3: Sustained movement - RED loading");
+                    }
+                } else if (!movementActive) {
+                    // Movement stopped before completing stage - return to idle
                     currentState = IDLE;
                     clearAllLEDs();
                     Serial.println("DEBUG::main.cpp Movement stopped in ORANGE stage - returning to IDLE (no notification sent)");
-                } else if (currentTime - stateStartTime >= STAGE2_DURATION) {
-                    // 1 more second passed with continued movement - enter STAGE3
-                    currentState = STAGE3_RED;
-                    stateStartTime = currentTime;
-                    clearAllLEDs();
-                    Serial.println("DEBUG::main.cpp STAGE 3: Sustained movement - RED loading");
                 }
                 break;
                 
