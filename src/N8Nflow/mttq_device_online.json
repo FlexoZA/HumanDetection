@@ -1,0 +1,191 @@
+{
+  "name": "mttq_device_online",
+  "nodes": [
+    {
+      "parameters": {
+        "topics": "humandetection/+/online",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mqttTrigger",
+      "typeVersion": 1,
+      "position": [
+        -300,
+        0
+      ],
+      "id": "d09f05ba-cd4d-400c-8a91-2ac66d85a733",
+      "name": "MQTT Trigger",
+      "credentials": {
+        "mqtt": {
+          "id": "uqLRHBCb7jHC7cIJ",
+          "name": "MQTT account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ffa1da6c-2077-4b4a-bab4-44acc8283237",
+              "leftValue": "={{ $json.message.message }}",
+              "rightValue": "online",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        100,
+        0
+      ],
+      "id": "653f3ede-62bd-45e8-be37-c68ce1f6c093",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "1430531187",
+        "text": "=🟢 Hi I am, {{ $json.message.message }}\nDevice: {{ $json.message.device_id }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_notification": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        420,
+        -180
+      ],
+      "id": "c3b17c1c-effa-4390-a849-2143a22c9e4a",
+      "name": "Device online",
+      "webhookId": "5dbf375a-ab49-42e4-8223-6605851056d8",
+      "credentials": {
+        "telegramApi": {
+          "id": "jRgZaGd3jeGQSn3t",
+          "name": "FlexoTelegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1430531187",
+        "text": "=🔴 I lost my connection or had a power failure.\nDevice: {{ $json.message.device_id }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_notification": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        420,
+        100
+      ],
+      "id": "6069640a-b32a-405f-afef-5fb0f0197502",
+      "name": "Device oflline",
+      "webhookId": "5dbf375a-ab49-42e4-8223-6605851056d8",
+      "credentials": {
+        "telegramApi": {
+          "id": "jRgZaGd3jeGQSn3t",
+          "name": "FlexoTelegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8313f3b9-d13f-4bdb-895d-d2030f909b25",
+              "name": "message",
+              "value": "={{ $json.message }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -100,
+        0
+      ],
+      "id": "6da4c2d0-fe97-4de3-8c9d-efcdfcc43570",
+      "name": "ParseData"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "MQTT Trigger": {
+      "main": [
+        [
+          {
+            "node": "ParseData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Device online",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Device oflline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Device online": {
+      "main": [
+        []
+      ]
+    },
+    "ParseData": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "315a1884-4c95-4d69-bd23-6fa807a9dc7a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a40230f57be88b10c26a262ec473bd997fac4c09d7c2b9cba009ddc9d48d4672"
+  },
+  "id": "c4l71mn25FZfiSHw",
+  "tags": []
+}

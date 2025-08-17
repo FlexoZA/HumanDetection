@@ -2,8 +2,8 @@
 #define CONFIG_H
 
 // WiFi Configuration
-#define WIFI_SSID "Lab"
-#define WIFI_PASSWORD "jason789"
+#define WIFI_SSID "flexoZA"
+#define WIFI_PASSWORD "Chr0846400936#"
 #define WIFI_TIMEOUT_MS 10000
 
 // MQTT Configuration
@@ -37,10 +37,10 @@
 
 // Hardware Pin Configuration
 // RCWL-0516 Sensor
-#define PIR_SENSOR_PIN 23  // GPIO 25 for motion sensor output
+#define PIR_SENSOR_PIN 25  // GPIO 25 for motion sensor output
 
 // CJMCU-2812B-16 NeoPixel Strip (16 LEDs)
-#define LED_DATA_PIN 25    // GPIO 23 for LED data line
+#define LED_DATA_PIN 23    // GPIO 23 for LED data line
 #define NUM_LEDS 16        // Number of LEDs in the strip
 
 // Button Pin

@@ -49,13 +49,13 @@ uint8_t rainbowHue = 0;
 uint8_t mqttPulseHue = 0;
 bool lastMQTTConnectedState = false;
 
-// Timing constants (in milliseconds)
-const unsigned long STAGE1_DURATION = 1000;    // 1 second white loading
-const unsigned long STAGE2_DURATION = 1000;    // 1 second orange loading
-const unsigned long STAGE3_DURATION = 1000;    // 1 second red loading before solid red
-const unsigned long MOVEMENT_TIMEOUT = 2000;    // 2000ms (2 seconds) without movement = no movement
-const unsigned long LED_UPDATE_INTERVAL = 62; // Update LED every 125ms (16 LEDs in 2 seconds)
-const unsigned long AUTO_ARM_DELAY = 900000;   // 15 minutes (900000) to auto-arm after no movement
+// Timing constants (in milliseconds) - Updated for 5 second detection window
+const unsigned long STAGE1_DURATION = 1500;    // 1.5 seconds white loading
+const unsigned long STAGE2_DURATION = 1500;    // 1.5 seconds orange loading
+const unsigned long STAGE3_DURATION = 2000;    // 2 seconds red loading before solid red
+const unsigned long MOVEMENT_TIMEOUT = 5000;    // 5000ms (5 seconds) without movement = no movement
+// LED timing is handled dynamically by updateLoadingEffect function
+const unsigned long AUTO_ARM_DELAY = 600000;   // 10 minutes (600000) to auto-arm after no movement
 const unsigned long RAINBOW_UPDATE_INTERVAL = 50; // Update rainbow every 50ms
 const unsigned long NOTIFICATION_REPEAT_INTERVAL = 5000; // Send notification every 5 seconds in solid red
 const unsigned long MQTT_STATUS_CHECK_INTERVAL = 1000; // Check MQTT status every second
@@ -199,7 +199,7 @@ void setup() {
     Serial.println("DEBUG::main.cpp Boot test complete - System ready");
     Serial.println("DEBUG::main.cpp System Mode: DISARMED (continuous rainbow)");
     Serial.println("DEBUG::main.cpp Auto-arm delay: 15 minutes after no movement");
-    Serial.println("DEBUG::main.cpp Detection stages: WHITE loading -> ORANGE loading -> RED loading");
+    Serial.println("DEBUG::main.cpp Detection stages: WHITE loading (1.5s) -> ORANGE loading (1.5s) -> RED loading (2s) -> SOLID RED + MQTT");
     Serial.println("DEBUG::main.cpp MQTT visual feedback enabled");
 }
 
@@ -565,7 +565,7 @@ void loop() {
                     currentState = STAGE1_WHITE;
                     stateStartTime = currentTime;
                     clearAllLEDs();
-                    Serial.println("DEBUG::main.cpp STAGE 1: ARMED detection - WHITE loading (no notification yet)");
+                    Serial.println("DEBUG::main.cpp STAGE 1: ARMED detection - WHITE loading 1.5s (no notification yet)");
                     // NOTE: No notification here - wait for full sequence to complete
                 }
                 break;
@@ -580,7 +580,7 @@ void loop() {
                         currentState = STAGE2_ORANGE;
                         stateStartTime = currentTime;
                         clearAllLEDs();
-                        Serial.println("DEBUG::main.cpp STAGE 2: Continued movement - ORANGE loading");
+                        Serial.println("DEBUG::main.cpp STAGE 2: Continued movement - ORANGE loading 1.5s");
                     }
                 } else if (!movementActive) {
                     // Movement stopped before completing stage - return to idle
@@ -600,7 +600,7 @@ void loop() {
                         currentState = STAGE3_RED;
                         stateStartTime = currentTime;
                         clearAllLEDs();
-                        Serial.println("DEBUG::main.cpp STAGE 3: Sustained movement - RED loading");
+                        Serial.println("DEBUG::main.cpp STAGE 3: Sustained movement - RED loading 2s");
                     }
                 } else if (!movementActive) {
                     // Movement stopped before completing stage - return to idle
@@ -621,7 +621,7 @@ void loop() {
                     
                     // Send first notification immediately when entering solid red
                     if (lastNotificationTime == 0) {
-                        Serial.println("DEBUG::main.cpp ALERT: Full detection sequence complete - SOLID RED + FIRST NOTIFICATION");
+                        Serial.println("DEBUG::main.cpp ALERT: 5-second detection sequence complete - SOLID RED + FIRST MQTT NOTIFICATION");
                         sendNotification();
                         lastNotificationTime = currentTime;
                     }

@@ -1,0 +1,203 @@
+{
+  "name": "mqtt_response",
+  "nodes": [
+    {
+      "parameters": {
+        "topics": "humandetection/+/status",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mqttTrigger",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        -280
+      ],
+      "id": "8c015b76-2cd6-4f00-808c-c85c1f532d14",
+      "name": "ESP32 Response Listener",
+      "credentials": {
+        "mqtt": {
+          "id": "uqLRHBCb7jHC7cIJ",
+          "name": "MQTT account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1430531187",
+        "text": "=✅ Command {{ $('Parse ESP response').item.json.message.command_response }} {{ $('Parse ESP response').item.json.message.success ? 'completed successfully' : 'failed' }}!\nDevice {{ $json.device_id }}\n📊 Current Mode: {{ $('Parse ESP response').item.json.message.current_mode }}\n💬 Message: {{ $('Parse ESP response').item.json.message.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_notification": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        -480
+      ],
+      "id": "2757ff9e-6b45-4d02-9766-863b3683565c",
+      "name": "Send Final Result",
+      "webhookId": "5dbf375a-ab49-42e4-8223-6605851056d8",
+      "credentials": {
+        "telegramApi": {
+          "id": "jRgZaGd3jeGQSn3t",
+          "name": "FlexoTelegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "device_id",
+              "fieldValue": "={{ $json.message.device_id }}"
+            },
+            {
+              "fieldId": "current_mode",
+              "fieldValue": "={{ $json.message.current_mode }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "=command-{{ $json.message.current_mode }}"
+            },
+            {
+              "fieldId": "wifi_signal",
+              "fieldValue": "={{ $json.message.wifi_signal }}"
+            },
+            {
+              "fieldId": "timestamp",
+              "fieldValue": "={{ $json.message.timestamp_iso }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        200,
+        -280
+      ],
+      "id": "7ab1548d-9179-481a-aa70-c62b937a0daf",
+      "name": "Supabase",
+      "retryOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "mgSX47QWzjDAPGKN",
+          "name": "mqtt_supabase"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "1430531187",
+        "text": "=🔴 I am unable to store the data in the database\n⛓️ Affected flow: mqtt response\n❌ Error: {{ $json.error }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_notification": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        -200
+      ],
+      "id": "60190d49-2c62-4753-b928-8c12c131def8",
+      "name": "SupabaseError",
+      "webhookId": "2d54d5d2-dc4f-4671-aea8-373656f3901c",
+      "credentials": {
+        "telegramApi": {
+          "id": "jRgZaGd3jeGQSn3t",
+          "name": "FlexoTelegram"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6421ad07-c04a-44a9-8832-78210ede543c",
+              "name": "message",
+              "value": "={{ $json.message }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -80,
+        -280
+      ],
+      "id": "bfa394c5-3b03-4e46-b4ff-c2dbf86c88bb",
+      "name": "Parse ESP response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "ESP32 Response Listener": {
+      "main": [
+        [
+          {
+            "node": "Parse ESP response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Final Result": {
+      "main": [
+        []
+      ]
+    },
+    "Supabase": {
+      "main": [
+        [
+          {
+            "node": "Send Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SupabaseError",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ESP response": {
+      "main": [
+        [
+          {
+            "node": "Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9940df84-4bf3-431e-9920-72aafe466197",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a40230f57be88b10c26a262ec473bd997fac4c09d7c2b9cba009ddc9d48d4672"
+  },
+  "id": "7wlbSuVH8kx6bPF2",
+  "tags": []
+}
