@@ -110,7 +110,8 @@ void setup() {
         Serial.println("DEBUG::main.cpp WiFi connected successfully!");
         
         // Configure SNTP time
-        configTime(0, 0, NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3);
+        // Configure time with SAST (UTC+2)
+        configTime(TIME_GMT_OFFSET_SEC, TIME_DST_OFFSET_SEC, NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3);
         Serial.println("DEBUG::main.cpp NTP: starting time sync...");
         
         // Wait up to ~10s for time to sync

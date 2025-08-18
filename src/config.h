@@ -2,8 +2,8 @@
 #define CONFIG_H
 
 // WiFi Configuration
-#define WIFI_SSID "flexoZA"
-#define WIFI_PASSWORD "Chr0846400936#"
+#define WIFI_SSID "Lab"
+#define WIFI_PASSWORD "jason789"
 #define WIFI_TIMEOUT_MS 10000
 
 // MQTT Configuration
@@ -21,6 +21,10 @@
 #define NTP_SERVER_1 "pool.ntp.org"
 #define NTP_SERVER_2 "time.nist.gov"
 #define NTP_SERVER_3 "time.google.com"
+// South Africa Standard Time (SAST) UTC+2, no DST
+#define TIME_GMT_OFFSET_SEC 7200
+#define TIME_DST_OFFSET_SEC 0
+#define TIME_TZ_OFFSET_STR "+02:00"
 
 // MQTT Topics
 #define MQTT_TOPIC_BASE "humandetection/"

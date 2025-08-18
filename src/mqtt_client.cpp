@@ -404,15 +404,17 @@ String MQTTClient::getDeviceId() {
 }
 
 String MQTTClient::getCurrentTimestamp() {
-    // If SNTP time is available, return ISO 8601 UTC; otherwise fall back to seconds since boot
+    // If SNTP time is available, return ISO 8601 local time with offset; otherwise fall back to seconds since boot
     time_t now = time(nullptr);
     if (now > 1600000000) {
         struct tm timeinfo;
-        gmtime_r(&now, &timeinfo);
-        char buf[25];
-        // Format: YYYY-MM-DDTHH:MM:SSZ
-        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
-        return String(buf);
+        localtime_r(&now, &timeinfo);
+        char buf[32];
+        // Format: YYYY-MM-DDTHH:MM:SS+02:00 (SAST)
+        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &timeinfo);
+        String ts(buf);
+        ts += TIME_TZ_OFFSET_STR; // from config.h
+        return ts;
     }
     return String(millis() / 1000);
 }
