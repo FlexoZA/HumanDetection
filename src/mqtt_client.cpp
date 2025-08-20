@@ -98,7 +98,7 @@ bool MQTTClient::connect() {
         subscribeToCommands();
         
         // Send initial status
-        publishStatus();
+        //publishStatus();
         
         lastHeartbeat = millis();
     } else {
