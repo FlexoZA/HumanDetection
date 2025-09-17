@@ -9,8 +9,8 @@
 // MQTT Configuration
 #define MQTT_BROKER "185.202.223.35"
 #define MQTT_PORT 1883
-#define MQTT_USERNAME "flexo"
-#define MQTT_PASSWORD "Chr0846400936#"
+#define MQTT_USERNAME "admin"
+#define MQTT_PASSWORD "labs"
 #define MQTT_CLIENT_ID_PREFIX "humandetection_device_"
 #define MQTT_KEEP_ALIVE 60
 #define MQTT_CONNECT_TIMEOUT 10000
@@ -48,7 +48,7 @@
 #define NUM_LEDS 16        // Number of LEDs in the strip
 
 // Button Pin
-#define BUTTON_PIN 18      // GPIO 18 with internal pull-up
+#define BUTTON_PIN 33      // capacitive button
 
 // Battery monitoring (if needed later)
 #define BATTERY_VOLTAGE_PIN A0

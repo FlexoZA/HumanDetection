@@ -7,8 +7,11 @@
 #include "mqtt_message_handler.h"
 #include "command_handler.h"
 
+#define PI 3.1415926535897932384626433832795
+
 // Function declarations for external access
 void triggerCommandReceivedIndicator();
+void showModeIndicator();
 
 // LED array
 CRGB leds[NUM_LEDS];
@@ -45,9 +48,14 @@ unsigned long lastRainbowUpdate = 0;
 unsigned long lastNotificationTime = 0;
 unsigned long lastMQTTStatusCheck = 0;
 unsigned long lastMQTTVisualUpdate = 0;
+unsigned long lastTouchTime = 0;
+unsigned long touchCountdownStart = 0;
+bool touchCountdownActive = false;
+int countdownLedsLit = 0; // Track LEDs lit during countdown
 uint8_t rainbowHue = 0;
 uint8_t mqttPulseHue = 0;
 bool lastMQTTConnectedState = false;
+bool lastTouchState = false;
 
 // Timing constants (in milliseconds) - Updated for 5 second detection window
 const unsigned long STAGE1_DURATION = 1500;    // 1.5 seconds white loading
@@ -60,6 +68,11 @@ const unsigned long RAINBOW_UPDATE_INTERVAL = 50; // Update rainbow every 50ms
 const unsigned long NOTIFICATION_REPEAT_INTERVAL = 5000; // Send notification every 5 seconds in solid red
 const unsigned long MQTT_STATUS_CHECK_INTERVAL = 1000; // Check MQTT status every second
 const unsigned long MQTT_VISUAL_UPDATE_INTERVAL = 100; // Update MQTT visual feedback every 100ms
+const unsigned long TOUCH_DEBOUNCE_INTERVAL = 2000; // Minimum time between touch detections (2000ms = 2 seconds)
+const unsigned long TOUCH_ARM_DELAY = 10000; // 10 seconds delay before arming/disarming
+const int TOUCH_THRESHOLD = 40; // Capacitive touch threshold (lower = more sensitive)
+// Note: For plastic enclosure, your body provides ground reference when touching
+// IMPORTANT: GPIO 33 connects to conductive pad, GND connects to separate conductive pad
 
 void setup() {
     // Initialize serial communication
@@ -70,6 +83,10 @@ void setup() {
     
     // Initialize PIR sensor pin
     pinMode(PIR_SENSOR_PIN, INPUT);
+
+    // Initialize capacitive touch sensor
+    Serial.println("DEBUG::main.cpp Initializing capacitive touch sensor on GPIO " + String(BUTTON_PIN));
+    Serial.println("DEBUG::main.cpp Touch threshold: " + String(TOUCH_THRESHOLD));
     
     // Initialize FastLED
     FastLED.addLeds<WS2812B, LED_DATA_PIN, GRB>(leds, NUM_LEDS);
@@ -207,6 +224,161 @@ void setup() {
 void clearAllLEDs() {
     fill_solid(leds, NUM_LEDS, CRGB::Black);
     FastLED.show();
+}
+
+bool isTouchDetected() {
+    int touchValue = touchRead(BUTTON_PIN);
+    // Debug: Print touch values occasionally to help with calibration
+    static unsigned long lastDebugTime = 0;
+    unsigned long currentTime = millis();
+    if (currentTime - lastDebugTime > 4000) { // Print every 4 seconds
+        Serial.println("DEBUG::main.cpp Touch value: " + String(touchValue) + " (threshold: " + String(TOUCH_THRESHOLD) + ")");
+        lastDebugTime = currentTime;
+    }
+
+    // If touch value is 0, it means GPIO 33 is shorted to GND - disable touch detection
+    if (touchValue == 0) {
+        Serial.println("DEBUG::main.cpp TOUCH DISABLED: GPIO 33 shorted to GND - check wiring!");
+        return false; // Don't detect touch when shorted
+    }
+
+    return (touchValue < TOUCH_THRESHOLD);
+}
+
+void handleTouchToggle() {
+    unsigned long currentTime = millis();
+    bool touchNow = isTouchDetected();
+
+    // Handle countdown completion (only for ARMING)
+    if (touchCountdownActive && (currentTime - touchCountdownStart >= TOUCH_ARM_DELAY)) {
+        // 10 seconds have passed - ARM the system
+        touchCountdownActive = false;
+
+        if (currentMode == DISARMED) {
+            currentMode = ARMED;
+            Serial.println("DEBUG::main.cpp TOUCH: 10-second delay complete - System now ARMED");
+
+            modeChangeTime = currentTime;
+            lastMovementTime = currentTime; // Reset auto-arm timer
+
+        // Clear countdown visual feedback and reset counter
+        clearAllLEDs();
+        countdownLedsLit = 0;
+
+        // Show armed indicator
+        showModeIndicator();
+
+            // Send MQTT notification
+            if (WiFiManager::isConnected() && MQTTClient::isConnected()) {
+                Serial.println("DEBUG::main.cpp Sending manual_armed event via MQTT...");
+                if (MQTTClient::publishDetectionEvent("manual_armed")) {
+                    Serial.println("DEBUG::main.cpp Manual armed event sent successfully!");
+                } else {
+                    Serial.println("DEBUG::main.cpp Failed to send manual armed event");
+                }
+            }
+        }
+
+        Serial.println("DEBUG::main.cpp TOUCH: Arming completed after 10-second delay");
+        return;
+    }
+
+    // Handle touch release (finger leaves pad)
+    if (!touchNow && lastTouchState && !touchCountdownActive) {
+        // Check debounce interval
+        if (currentTime - lastTouchTime >= TOUCH_DEBOUNCE_INTERVAL) {
+            lastTouchTime = currentTime;
+
+            if (currentMode == DISARMED) {
+                // Start 10-second countdown to ARM
+                touchCountdownStart = currentTime;
+                touchCountdownActive = true;
+                countdownLedsLit = 0; // Initialize LED counter
+
+                Serial.println("DEBUG::main.cpp TOUCH: Finger released - Starting 10-second countdown to ARM");
+                Serial.println("DEBUG::main.cpp TOUCH: Touch again to cancel, or wait 10 seconds to arm");
+
+                // Initial visual feedback - blue flash to indicate countdown started
+                fill_solid(leds, NUM_LEDS, CRGB::Blue);
+                FastLED.show();
+                delay(200);
+                clearAllLEDs();
+
+            } else if (currentMode == ARMED) {
+                // DISARM immediately (no countdown)
+                currentMode = DISARMED;
+                Serial.println("DEBUG::main.cpp TOUCH: Finger released - System immediately DISARMED");
+
+                modeChangeTime = currentTime;
+                lastMovementTime = currentTime; // Reset auto-arm timer
+
+                // Show disarmed indicator
+                showModeIndicator();
+
+                // Send MQTT notification
+                if (WiFiManager::isConnected() && MQTTClient::isConnected()) {
+                    Serial.println("DEBUG::main.cpp Sending manual_disarmed event via MQTT...");
+                    if (MQTTClient::publishDetectionEvent("manual_disarmed")) {
+                        Serial.println("DEBUG::main.cpp Manual disarmed event sent successfully!");
+                    } else {
+                        Serial.println("DEBUG::main.cpp Failed to send manual disarmed event");
+                    }
+                }
+            }
+        }
+    }
+    // Handle touch during countdown - cancel action
+    else if (touchNow && !lastTouchState && touchCountdownActive) {
+        touchCountdownActive = false;
+        Serial.println("DEBUG::main.cpp TOUCH: Countdown canceled - touch detected again");
+
+        // Visual feedback for cancellation - quick red flash
+        fill_solid(leds, NUM_LEDS, CRGB::Red);
+        FastLED.show();
+        delay(200);
+        clearAllLEDs();
+
+        // Reset loading effect counter for next countdown
+        countdownLedsLit = 0;
+    }
+    // Update visual feedback during countdown
+    else if (touchCountdownActive) {
+        // Progressive loading effect during countdown
+        unsigned long timeInCountdown = currentTime - touchCountdownStart;
+        unsigned long totalCountdownTime = TOUCH_ARM_DELAY; // 10 seconds
+
+        // Calculate how many LEDs should be lit based on time progression
+        int ledsToLight = (timeInCountdown * NUM_LEDS) / totalCountdownTime;
+
+        // Clamp to valid range
+        if (ledsToLight > NUM_LEDS) ledsToLight = NUM_LEDS;
+        if (ledsToLight < 0) ledsToLight = 0;
+
+        // Reset LED count if countdown just started
+        if (countdownLedsLit == 0 && ledsToLight > 0) {
+            clearAllLEDs();
+        }
+
+        // Light up LEDs progressively (purple for countdown)
+        if (ledsToLight > countdownLedsLit) {
+            for (int i = countdownLedsLit; i < ledsToLight; i++) {
+                leds[i] = CRGB::Purple; // Purple color for countdown
+            }
+            FastLED.show();
+            countdownLedsLit = ledsToLight;
+        }
+
+        // Debug output every second
+        static int lastSecond = -1;
+        int countdownSeconds = 10 - (timeInCountdown / 1000);
+        if (countdownSeconds != lastSecond && countdownSeconds >= 0) {
+            Serial.println("DEBUG::main.cpp TOUCH: " + String(countdownSeconds) + " seconds remaining to arm...");
+            lastSecond = countdownSeconds;
+        }
+    }
+
+    // Update touch state
+    lastTouchState = touchNow;
 }
 
 void updateRainbow() {
@@ -501,8 +673,12 @@ void loop() {
     if (!bootTestComplete) {
         return;
     }
-    
+
     unsigned long currentTime = millis();
+
+    // Handle capacitive touch for manual ARM/DISARM toggle
+    handleTouchToggle();
+
     bool movementNow = isMovementDetected();
     
     // Track both movement starts and continuous movement
@@ -647,7 +823,7 @@ void loop() {
         // DISARMED mode - show rainbow only if MQTT is connected, otherwise show MQTT status
         currentState = IDLE; // Always stay in idle when disarmed
         
-        if (mqttState == MQTT_STATE_CONNECTED) {
+        if (mqttState == MQTT_STATE_CONNECTED && !touchCountdownActive) {
             updateRainbow();
         }
         // MQTT visual feedback is handled above in the main switch statement

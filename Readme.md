@@ -53,6 +53,41 @@ DIN      →   GPIO 25
 DOUT     →   Not connected
 ```
 
+### Capacitive Touch Button with 10-Second Safety Delay
+```
+Touch Button   ESP32 Pin
+Capacitive →   GPIO 33 (capacitive touch sensor)
+GND Reference → GND (required for capacitive sensing)
+```
+
+**🛡️ Safety Feature: Smart 10-Second Delay**
+- **To ARM**: Touch + release finger → 10-second countdown begins (progressive purple loading)
+- **To DISARM**: Touch + release finger → **immediate** disarm (no delay)
+- **Cancel**: Touch again during countdown to cancel arming
+- **LED Priority**: Countdown visuals override standby rainbow during arming
+- Prevents accidental arming, allows instant disarming
+
+## **Plastic Enclosure Setup:**
+
+**✅ RECOMMENDED - Single Touch (One Finger):**
+```
+ESP32 GPIO 33 ──── Conductive Pad (touch electrode)
+ESP32 GND ──────── Separate Conductive Pad (ground reference)
+```
+- Touch one conductive pad with one finger
+- Your body provides the capacitive connection
+- Simple and reliable
+
+**❌ NOT RECOMMENDED - Two Touch (Two Fingers):**
+- ESP32 capacitive touch is designed for single-touch detection
+- Two-finger detection is unreliable and complex
+- Use single touch instead
+
+**❌ WRONG - Single Wire (Shorted):**
+```
+ESP32 GPIO 33 ──── Same Wire ──── GND (creates short circuit!)
+```
+
 ### Future Expansion (Planned)
 ```
 Component    ESP32 Pin
@@ -107,6 +142,7 @@ Button   →   GPIO 18 (with internal pull-up)
 - **DISARMED Mode**: 2 quick green flashes across all LEDs
 - **ARMED Mode**: 2 quick red flashes across all LEDs
 - **Notification Sent**: 3 purple flashes to confirm alert transmission
+- **Touch Detected**: Quick blue flash followed by mode indicator flashes
 
 ## Technical Specifications
 
@@ -156,9 +192,9 @@ Button   →   GPIO 18 (with internal pull-up)
 - [x] Repeated notification system
 - [x] Auto-arming after inactivity
 - [x] Mode change indicators
+- [x] Capacitive touch button for manual ARM/DISARM
 
 ### 🚧 In Development
-- [ ] Physical button for manual ARM/DISARM control
 - [ ] WiFi connectivity and credentials management
 - [ ] n8n webhook integration for notifications
 - [ ] Supabase database logging
@@ -190,7 +226,14 @@ const unsigned long NOTIFICATION_REPEAT_INTERVAL = 5000; // 5 second repeats
 #define PIR_SENSOR_PIN 23      // RCWL-0516 output
 #define LED_DATA_PIN 25        // NeoPixel data input
 #define NUM_LEDS 16           // Number of LEDs in strip
-#define BUTTON_PIN 18         // Manual control button (future)
+#define BUTTON_PIN 33         // Capacitive touch button
+```
+
+### Capacitive Touch Configuration
+```cpp
+#define TOUCH_THRESHOLD 40     // Touch sensitivity (lower = more sensitive)
+#define TOUCH_DEBOUNCE_INTERVAL 2000 // Minimum time between touches (2000ms = 2s)
+#define TOUCH_ARM_DELAY 10000  // 10 seconds delay before arming/disarming
 ```
 
 ## Installation & Setup
@@ -198,7 +241,14 @@ const unsigned long NOTIFICATION_REPEAT_INTERVAL = 5000; // 5 second repeats
 ### Hardware Assembly
 1. Connect RCWL-0516 sensor to ESP32 (VIN, GND, OUT → GPIO 23)
 2. Connect CJMCU-2812B-16 strip to ESP32 (VCC, GND, DIN → GPIO 25)
-3. Power ESP32 via USB-C for development/testing
+3. **Touch Button Wiring (Plastic Enclosure):**
+   - **Wire 1**: ESP32 GPIO 33 → Conductive pad/surface (touch electrode)
+   - **Wire 2**: ESP32 GND → Separate conductive pad/surface (ground reference)
+   - **⚠️ NEVER connect both wires together!**
+4. Add conductive material: Copper foil, conductive paint, or metal plates
+5. Power ESP32 via USB-C for development/testing
+
+**Grounding Note**: With plastic enclosure, your body becomes part of the capacitive circuit when you touch the conductive pad.
 
 ### Software Setup
 1. Install PlatformIO IDE or Arduino IDE
@@ -213,21 +263,48 @@ const unsigned long NOTIFICATION_REPEAT_INTERVAL = 5000; // 5 second repeats
 3. **Auto-arm Test**: Wait 10 minutes, system should show red flashes
 4. **Detection Test**: Wave hand near sensor, observe 3-stage loading sequence
 5. **Alert Test**: Sustain movement for 3+ seconds, confirm solid red and notifications
+6. **Ground Test**: Check serial monitor for touch values:
+   - **After fixing wiring**: 50-80 when not touching, <40 when touching
+   - **If still 0**: GPIO 33 still shorted to GND - check solder joints
+   - **If >100**: No ground connection - ensure GND wire is properly connected
+   - **If TOUCH DISABLED**: GPIO 33 is still shorted - fix wiring
+7. **Touch Calibration**: Monitor serial output for touch values, adjust TOUCH_THRESHOLD if needed
+8. **Touch Test**: Test both ARM and DISARM scenarios:
+   - **When DISARMED**: Touch + release → blue flash + progressive purple loading (10s countdown)
+   - **During countdown**: Touch again → red flash (canceled)
+   - **Wait 10s**: Green/red flashes (armed)
+   - **When ARMED**: Touch + release → immediate green/red flashes (disarmed)
 
 ## Troubleshooting
 
 ### Common Issues
 - **No LED response**: Check 3.3V power and GPIO 25 connection
-- **No motion detection**: Verify RCWL-0516 VIN power and GPIO 23 connection  
+- **No motion detection**: Verify RCWL-0516 VIN power and GPIO 23 connection
 - **Slow rainbow**: Normal - updates every 50ms for smooth animation
 - **No auto-arm**: Check 10-minute timer, ensure no movement detected
 - **Missing notifications**: Verify 3-second sustained movement requirement
+- **Touch not working**: Check if GPIO 33 is connected to screw AND GND has proper reference
+- **Touch values stuck at 0**: GPIO 33 is DIRECTLY connected to GND - remove the direct bridge
+- **TOUCH DISABLED message**: GPIO 33 is shorted to GND - fix wiring connections
+- **Touch values always high**: No ground reference - ensure GND is connected properly
+- **Touch too sensitive/insensitive**: Adjust TOUCH_THRESHOLD value (lower = more sensitive)
+- **Touch erratic**: Check GND connection quality and metal surface cleanliness
 
 ### Debug Output
 Monitor serial output at 115200 baud for detailed system status:
 ```
 DEBUG::main.cpp Starting Advanced Human Detection System with ARM/DISARM...
 DEBUG::main.cpp System Mode: DISARMED (continuous rainbow)
+DEBUG::main.cpp Touch value: 65 (threshold: 40)  // Normal reading
+DEBUG::main.cpp TOUCH: Finger released - Starting 10-second countdown to ARM
+DEBUG::main.cpp TOUCH: Touch again to cancel, or wait 10 seconds to arm
+DEBUG::main.cpp TOUCH: 10 seconds remaining to arm... [LEDs: 0/16 lit]
+DEBUG::main.cpp TOUCH: 9 seconds remaining to arm... [LEDs: 2/16 lit]
+[...countdown continues - progressive purple loading...]
+DEBUG::main.cpp TOUCH: 10-second delay complete - System now ARMED
+DEBUG::main.cpp TOUCH: Finger released - System immediately DISARMED  // When ARMED
+DEBUG::main.cpp TOUCH: Countdown canceled - touch detected again  // When canceling
+DEBUG::main.cpp TOUCH DISABLED: GPIO 33 shorted to GND - check wiring!  // If shorted
 DEBUG::main.cpp STAGE 1: ARMED detection - WHITE loading (no notification yet)
 DEBUG::main.cpp ALERT: Full detection sequence complete - SOLID RED + FIRST NOTIFICATION
 ```
