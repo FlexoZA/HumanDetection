@@ -56,12 +56,15 @@ uint8_t rainbowHue = 0;
 uint8_t mqttPulseHue = 0;
 bool lastMQTTConnectedState = false;
 bool lastTouchState = false;
+unsigned long lastMovementNowTime = 0;     // Last time debounced movement was TRUE
+unsigned long lastStageTickTime = 0;       // For pausing stage progress when movement pauses
 
 // Timing constants (in milliseconds) - Updated for 5 second detection window
 const unsigned long STAGE1_DURATION = 1500;    // 1.5 seconds white loading
 const unsigned long STAGE2_DURATION = 1500;    // 1.5 seconds orange loading
 const unsigned long STAGE3_DURATION = 2000;    // 2 seconds red loading before solid red
 const unsigned long MOVEMENT_TIMEOUT = 5000;    // 5000ms (5 seconds) without movement = no movement
+const unsigned long STOP_GRACE_MS = 400;       // Grace period after movement stops before aborting sequence
 // LED timing is handled dynamically by updateLoadingEffect function
 const unsigned long AUTO_ARM_DELAY = 600000;   // 10 minutes (600000) to auto-arm after no movement
 const unsigned long RAINBOW_UPDATE_INTERVAL = 50; // Update rainbow every 50ms
@@ -688,6 +691,7 @@ void loop() {
     if (movementNow) {
         // Update for any movement (start or continuous)
         lastActiveMovement = currentTime;
+        lastMovementNowTime = currentTime;
         
         // Log only movement starts (for auto-arm timing)
         if (!lastMovementState) {
@@ -741,6 +745,7 @@ void loop() {
                     // First movement detected - enter STAGE1
                     currentState = STAGE1_WHITE;
                     stateStartTime = currentTime;
+                    lastStageTickTime = currentTime;
                     clearAllLEDs();
                     Serial.println("DEBUG::main.cpp STAGE 1: ARMED detection - WHITE loading 1.5s (no notification yet)");
                     // NOTE: No notification here - wait for full sequence to complete
@@ -748,74 +753,99 @@ void loop() {
                 break;
                 
             case STAGE1_WHITE:
-                updateLoadingEffect(CRGB::White, STAGE1_DURATION);
-                
-                // Check state duration and movement status
-                if (currentTime - stateStartTime >= STAGE1_DURATION) {
-                    if (movementActive) {
-                        // Movement is still active after duration - progress to STAGE2
+                {
+                    // Pause stage progress when movement pauses (keeps LEDs in sync with sustained movement)
+                    unsigned long delta = currentTime - lastStageTickTime;
+                    lastStageTickTime = currentTime;
+                    if (!movementNow) {
+                        stateStartTime += delta; // freeze progress while no movement
+                    }
+
+                    updateLoadingEffect(CRGB::White, STAGE1_DURATION);
+
+                    // Abort if movement has stopped beyond grace
+                    if (!movementNow && (currentTime - lastMovementNowTime) > STOP_GRACE_MS) {
+                        currentState = IDLE;
+                        clearAllLEDs();
+                        Serial.println("DEBUG::main.cpp Movement stopped (grace exceeded) in WHITE stage - returning to IDLE");
+                        break;
+                    }
+
+                    // Advance when sustained movement time reaches duration
+                    if (currentTime - stateStartTime >= STAGE1_DURATION) {
                         currentState = STAGE2_ORANGE;
                         stateStartTime = currentTime;
+                        lastStageTickTime = currentTime;
                         clearAllLEDs();
                         Serial.println("DEBUG::main.cpp STAGE 2: Continued movement - ORANGE loading 1.5s");
                     }
-                } else if (!movementActive) {
-                    // Movement stopped before completing stage - return to idle
-                    currentState = IDLE;
-                    clearAllLEDs();
-                    Serial.println("DEBUG::main.cpp Movement stopped in WHITE stage - returning to IDLE (no notification sent)");
                 }
                 break;
                 
             case STAGE2_ORANGE:
-                updateLoadingEffect(CRGB::Orange, STAGE2_DURATION);
-                
-                // Check state duration and movement status
-                if (currentTime - stateStartTime >= STAGE2_DURATION) {
-                    if (movementActive) {
-                        // Movement is still active after duration - progress to STAGE3
+                {
+                    unsigned long delta = currentTime - lastStageTickTime;
+                    lastStageTickTime = currentTime;
+                    if (!movementNow) {
+                        stateStartTime += delta; // freeze progress
+                    }
+
+                    updateLoadingEffect(CRGB::Orange, STAGE2_DURATION);
+
+                    if (!movementNow && (currentTime - lastMovementNowTime) > STOP_GRACE_MS) {
+                        currentState = IDLE;
+                        clearAllLEDs();
+                        Serial.println("DEBUG::main.cpp Movement stopped (grace exceeded) in ORANGE stage - returning to IDLE");
+                        break;
+                    }
+
+                    if (currentTime - stateStartTime >= STAGE2_DURATION) {
                         currentState = STAGE3_RED;
                         stateStartTime = currentTime;
+                        lastStageTickTime = currentTime;
                         clearAllLEDs();
                         Serial.println("DEBUG::main.cpp STAGE 3: Sustained movement - RED loading 2s");
                     }
-                } else if (!movementActive) {
-                    // Movement stopped before completing stage - return to idle
-                    currentState = IDLE;
-                    clearAllLEDs();
-                    Serial.println("DEBUG::main.cpp Movement stopped in ORANGE stage - returning to IDLE (no notification sent)");
                 }
                 break;
                 
             case STAGE3_RED:
-                if (currentTime - stateStartTime < STAGE3_DURATION) {
-                    // Still in loading phase
-                    updateLoadingEffect(CRGB::Red, STAGE3_DURATION);
-                } else {
-                    // Loading complete - show solid red and send repeated notifications
-                    fill_solid(leds, NUM_LEDS, CRGB::Red);
-                    FastLED.show();
-                    
-                    // Send first notification immediately when entering solid red
-                    if (lastNotificationTime == 0) {
-                        Serial.println("DEBUG::main.cpp ALERT: 5-second detection sequence complete - SOLID RED + FIRST MQTT NOTIFICATION");
-                        sendNotification();
-                        lastNotificationTime = currentTime;
+                {
+                    unsigned long delta = currentTime - lastStageTickTime;
+                    lastStageTickTime = currentTime;
+                    if (!movementNow && (currentTime - lastMovementNowTime) > STOP_GRACE_MS) {
+                        // Movement stopped - return to idle and reset notification timer
+                        currentState = IDLE;
+                        lastNotificationTime = 0; // Reset for next detection sequence
+                        clearAllLEDs();
+                        Serial.println("DEBUG::main.cpp Movement stopped (grace exceeded) in RED stage - returning to IDLE");
+                        break;
                     }
-                    // Send repeated notifications every 5 seconds
-                    else if (currentTime - lastNotificationTime >= NOTIFICATION_REPEAT_INTERVAL) {
-                        Serial.println("DEBUG::main.cpp ALERT: Continued detection - SOLID RED + REPEAT NOTIFICATION");
-                        sendNotification();
-                        lastNotificationTime = currentTime;
+
+                    if (currentTime - stateStartTime < STAGE3_DURATION) {
+                        // Loading phase; pause progress while movement paused
+                        if (!movementNow) {
+                            stateStartTime += delta; // freeze progress
+                        }
+                        updateLoadingEffect(CRGB::Red, STAGE3_DURATION);
+                    } else {
+                        // Loading complete - show solid red and send repeated notifications (only while within grace)
+                        fill_solid(leds, NUM_LEDS, CRGB::Red);
+                        FastLED.show();
+                        
+                        // Send first notification immediately when entering solid red
+                        if (lastNotificationTime == 0) {
+                            Serial.println("DEBUG::main.cpp ALERT: 5-second detection sequence complete - SOLID RED + FIRST MQTT NOTIFICATION");
+                            sendNotification();
+                            lastNotificationTime = currentTime;
+                        }
+                        // Send repeated notifications every 5 seconds
+                        else if (currentTime - lastNotificationTime >= NOTIFICATION_REPEAT_INTERVAL) {
+                            Serial.println("DEBUG::main.cpp ALERT: Continued detection - SOLID RED + REPEAT NOTIFICATION");
+                            sendNotification();
+                            lastNotificationTime = currentTime;
+                        }
                     }
-                }
-                
-                if (!movementActive) {
-                    // Movement stopped - return to idle and reset notification timer
-                    currentState = IDLE;
-                    lastNotificationTime = 0; // Reset for next detection sequence
-                    clearAllLEDs();
-                    Serial.println("DEBUG::main.cpp Movement stopped in RED stage - returning to IDLE");
                 }
                 break;
         }
